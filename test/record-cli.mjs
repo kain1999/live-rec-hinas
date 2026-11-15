@@ -15,9 +15,23 @@ function arg(name, dflt) {
 }
 
 const site = arg('site', 'chaturbate')
-const room = arg('room', '')
+let room = arg('room', '')
 const seconds = Number(arg('seconds', '60'))
 const outdir = arg('outdir', 'recordings')
+const discover = arg('discover', '') !== ''
+
+// stripchat 自动发现一个在线房间
+if (discover && site === 'stripchat' && !room) {
+  const res = await fetch('https://stripchat.com/api/front/v2/models/ranking/room?limit=30&primaryTag=girls&ignoreImmutable=1', {
+    headers: { 'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0', 'Accept': 'application/json' }
+  })
+  const j = await res.json()
+  const list = (j.models || []).filter(m => m.hasStream && m.username)
+  if (!list.length) { console.error('[cli] discover: no online model found'); process.exit(3) }
+  room = list[0].username
+  console.log('[cli] discovered room:', room, '| candidates:', list.length)
+}
+
 if (!room) { console.error('[cli] missing --room'); process.exit(1) }
 
 updateConfig({
@@ -38,6 +52,7 @@ if (!inst) { console.error('[cli] unknown site:', site); process.exit(1) }
 console.log('[cli] checking room status ...')
 const st = await inst.update(room)
 console.log('[cli] status:', st.status, '| thumb:', st.thumb || '-')
+console.log('[cli] model room:', room)
 
 async function resolveUrl() {
   if (site === 'chaturbate' && inst.getStreamUrlForRec) {

@@ -8,9 +8,9 @@ on:
         required: true
         default: 'chaturbate'
       room:
-        description: 'room / model name'
-        required: true
-        default: 'oke_doke'
+        description: 'room / model name (empty = auto-discover on stripchat)'
+        required: false
+        default: ''
       seconds:
         description: 'record seconds'
         required: true
@@ -34,7 +34,9 @@ jobs:
         id: rec
         run: |
           set +e
-          node test/record-cli.mjs --site "${{ inputs.site }}" --room "${{ inputs.room }}" --seconds "${{ inputs.seconds }}" --outdir recordings
+          ARGS=(--site "${{ inputs.site }}" --seconds "${{ inputs.seconds }}" --outdir recordings)
+          if [ -n "${{ inputs.room }}" ]; then ARGS+=(--room "${{ inputs.room }}"); else ARGS+=(--discover 1); fi
+          node test/record-cli.mjs "${ARGS[@]}"
           code=$?
           echo "exit=$code" >> "$GITHUB_OUTPUT"
           exit 0
