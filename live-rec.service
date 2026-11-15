@@ -1,0 +1,19 @@
+[Unit]
+Description=live-rec hinas - live stream recorder with web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# !! 修改为你的实际安装目录 !!
+WorkingDirectory=/opt/live-rec-hinas
+ExecStart=/bin/sh /opt/live-rec-hinas/start.sh
+Restart=always
+RestartSec=5
+# 盒子内存有限，限制 Node 堆
+Environment=NODE_OPTIONS=--max-old-space-size=256
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

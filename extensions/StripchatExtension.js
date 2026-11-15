@@ -1,0 +1,147 @@
+export default class StripchatExtension {
+  constructor(ExtensionExtra) {
+    this.config = {
+      name: 'stripchat',
+      color: '#ef4444',
+      domain: 'stripchat.com',
+      referer: true,
+      get_url_new: true,
+      force_type: 'video/x-mpegUrl',
+      patterns: [
+        'https://*.stripchat.com/*',
+        'https://*.doppiocdn.live/*',
+        'https://*.doppiocdn.com/*',
+        'https://*.doppiocdn.media/*',
+        'https://*.sacdnssedge.com/*'
+      ],
+      version: '1.1.0'
+    }
+    this.extension = new ExtensionExtra(this.config)
+    this.status_types = this.extension.status_types
+  }
+
+  async scrapeApi(nametag) {
+    const userIdRes = await this.extension.fetch(
+      `https://stripchat.com/api/front/users/user-ids/${nametag}`
+    )
+    const { id } = await userIdRes.json()
+
+    const camRes = await this.extension.fetch(
+      `https://stripchat.com/api/front/v2/models/${id}/cam`
+    )
+    return await camRes.json()
+  }
+
+  async getInfo(nametag) {
+    const res = await this.scrapeApi(nametag)
+    const cam = res.user.user
+    const status =
+      cam.status == 'public' && res.cam.isCamAvailable && res.cam.isCamActive
+        ? this.status_types.ONLINE
+        : cam.status == 'private' ||
+            cam.status == 'groupShow' ||
+            cam.status == 'p2p' ||
+            cam.status == 'virtualPrivate' ||
+            cam.status == 'p2pVoice'
+          ? this.status_types.PRIVATE
+          : cam.status == 'off' || cam.status == 'idle'
+            ? this.status_types.OFFLINE
+            : cam.isDeleted
+              ? this.status_types.NOT_EXIST
+              : this.status_types.OFFLINE
+
+    const streamName = res.cam.streamName || null
+
+    return { status, thumb: this.getThumb(streamName, status), streamName, res }
+  }
+
+  getThumb(streamName, status) {
+    if (
+      !streamName ||
+      (status !== this.status_types.ONLINE && status !== this.status_types.PRIVATE)
+    )
+      return ''
+    const timestamp = new Date().getTime().toString().slice(0, -3) - 140
+    return `https://img.doppiocdn.live/thumbs/${timestamp}/${streamName}_webp`
+  }
+
+  async extract(nametag, cachedData = null) {
+    const { status, thumb, streamName } = cachedData || (await this.getInfo(nametag))
+
+    if (status === this.status_types.OFFLINE || status === this.status_types.NOT_EXIST) {
+      return this.extension.createResponse({ nametag, status, thumb })
+    }
+
+    const masterUrl = `https://edge-hls.doppiocdn.live/hls/${streamName}/master/${streamName}_auto.m3u8`
+    const resData = await this.extension.getResolutions(masterUrl, '#', true)
+
+    let resolutions = [], blob, domain
+
+    if (resData && resData.streamdata) {
+      const domainMatch = resData.streamdata.match(/([a-z0-9-]+)\.doppiocdn\.live/g)
+      if (domainMatch) {
+        domain = domainMatch[0]
+        resData.streamdata = resData.streamdata.replace(
+          /[a-z0-9-]+\.doppiocdn\.live\/hls/g,
+          'media-hls.sacdnssedge.com/' + String(domain).split('.')[0]
+        )
+      }
+      blob =
+        'data:application/x-mpegurl;base64,' + Buffer.from(resData.streamdata).toString('base64')
+
+      resData.resolutions.map((el) => {
+        resolutions.push({
+          url: domain
+            ? el.url.replace(
+                /[a-z0-9-]+\.doppiocdn\.live\/hls/g,
+                'media-hls.sacdnssedge.com/' + String(domain).split('.')[0]
+              )
+            : el.url,
+          resolution: el.resolution,
+          fps: el.fps
+        })
+      })
+    }
+
+    return this.extension.createResponse({
+      nametag,
+      status,
+      url: blob,
+      resolutions,
+      thumb,
+      force_type: 'video/x-mpegUrl'
+    })
+  }
+
+  async getStreamUrlForRec(nametag, selresolution = null) {
+    try {
+      const StripchatProxy = this.extension.getStripchatProxy()
+      const existing = StripchatProxy.getProxy(nametag)
+      if (existing) StripchatProxy.stopProxy(nametag)
+
+      const { status, streamName } = await this.getInfo(nametag)
+      if (!streamName || status !== this.status_types.ONLINE) return null
+
+      const proxy = new StripchatProxy(nametag, streamName, selresolution)
+      await proxy.start()
+      return { url: proxy.url }
+    } catch (err) {
+      console.error(`StripchatProxy start failed for ${nametag}:`, err.message)
+      return null
+    }
+  }
+
+  async getStreamUrl(nametag, selresolution) {
+    const result = await this.getStreamUrlForRec(nametag, selresolution)
+    return result ? result.url : null
+  }
+
+  async update(nametag) {
+    const { status, thumb } = await this.getInfo(nametag)
+
+    return this.extension.createUpdate({
+      status,
+      thumb
+    })
+  }
+}

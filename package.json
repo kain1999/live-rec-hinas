@@ -1,0 +1,17 @@
+{
+  "name": "live-rec-hinas",
+  "version": "1.0.0",
+  "description": "Live stream recorder for HiNAS (Hi3798MV300) with web UI - ported from live-rec",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "optionalDependencies": {
+    "impit": "*"
+  },
+  "license": "MIT"
+}

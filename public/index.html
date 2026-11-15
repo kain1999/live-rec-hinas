@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>live-rec · hinas</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%23ef4444'/></svg>">
+</head>
+<body>
+  <div id="login-overlay" class="overlay hidden">
+    <div class="login-box">
+      <h2>live-rec · hinas</h2>
+      <p class="muted">请输入访问密码</p>
+      <input type="password" id="login-password" placeholder="密码" autocomplete="current-password">
+      <button id="login-btn" class="btn primary">进入</button>
+      <p id="login-error" class="error hidden">密码错误</p>
+    </div>
+  </div>
+
+  <header>
+    <div class="brand">
+      <span class="dot" id="hd-dot"></span>
+      <h1>live-rec <span class="muted">hinas</span></h1>
+      <span class="ver" id="hd-version"></span>
+    </div>
+    <div class="stats" id="hd-stats"></div>
+  </header>
+
+  <nav>
+    <button class="tab active" data-tab="tasks">监控</button>
+    <button class="tab" data-tab="files">文件</button>
+    <button class="tab" data-tab="settings">设置</button>
+    <button class="tab" data-tab="logs">日志</button>
+  </nav>
+
+  <main>
+    <!-- 监控 -->
+    <section id="tab-tasks" class="tabpage">
+      <div class="add-bar">
+        <input type="text" id="add-url" placeholder="粘贴直播间地址，如 https://chaturbate.com/roomname/">
+        <button id="btn-test" class="btn">测试解析</button>
+        <button id="btn-add" class="btn primary">添加监控</button>
+      </div>
+      <div id="resolve-result" class="resolve-result hidden"></div>
+      <div id="tasks-list" class="tasks-list">
+        <div class="empty muted">暂无监控任务。粘贴直播间地址添加，程序会自动轮询并在开播时录制。</div>
+      </div>
+    </section>
+
+    <!-- 文件 -->
+    <section id="tab-files" class="tabpage hidden">
+      <div class="files-head muted">
+        <span>保存目录：<code id="save-folder"></code></span>
+        <button id="btn-refresh-files" class="btn small">刷新</button>
+      </div>
+      <div id="files-list" class="files-list"></div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="tab-settings" class="tabpage hidden">
+      <div id="settings-form" class="settings-form"></div>
+      <div class="settings-actions">
+        <button id="btn-save-config" class="btn primary">保存设置</button>
+        <span id="config-note" class="muted"></span>
+      </div>
+    </section>
+
+    <!-- 日志 -->
+    <section id="tab-logs" class="tabpage hidden">
+      <div class="logs-head">
+        <label><input type="checkbox" id="logs-autoscroll" checked> 自动滚动</label>
+        <button id="btn-clear-logs" class="btn small">清空日志</button>
+      </div>
+      <pre id="logs-view" class="logs-view"></pre>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
