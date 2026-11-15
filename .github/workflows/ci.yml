@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell syntax (dash -n)
+        run: |
+          set -e
+          for f in setup.sh install.sh start.sh; do
+            dash -n "$f"
+            echo "$f: syntax OK"
+          done
+      - name: Shellcheck (warnings allowed, errors fatal)
+        run: |
+          shellcheck -s sh -S error setup.sh install.sh start.sh && echo "shellcheck: no errors"
+      - name: Node syntax
+        run: |
+          set -e
+          for f in $(find server.js core extensions lib public -name '*.js' 2>/dev/null); do
+            node --check "$f"
+          done
+          echo "node --check: all OK"
+      - name: Boot smoke test
+        run: |
+          set -e
+          LRH_NO_SCHED=1 PORT=18097 node server.js &
+          sleep 3
+          curl -fsS http://127.0.0.1:18097/api/state | grep -q '"ok":true'
+          echo "boot: OK"
+          curl -fsS "http://127.0.0.1:18097/api/config" >/dev/null
+          kill %1

@@ -53,7 +53,7 @@ else
   echo "    Node.js $($NODE_BIN -v) 安装完成"
 fi
 
-echo "==> [2/3] 检查 ffmpeg ..."
+echo "==> [2/4] 检查 ffmpeg ..."
 FF_PATH=""
 if have ffmpeg; then
   FF_PATH="ffmpeg"; echo "    使用系统 ffmpeg: $(command -v ffmpeg)"
@@ -100,19 +100,49 @@ else
   echo "    ffmpeg 就绪: $FF_PATH"
 fi
 
-echo "==> [3/3] 写入配置 ..."
+echo "==> [3/4] 检查 mkvmerge (mkvtoolnix) ..."
+MKV_OK=0
+MKV_PATH=""
+if [ -x "$RUNTIME/mkvtoolnix/mkvmerge" ]; then
+  MKV_PATH="$RUNTIME/mkvtoolnix/mkvmerge"; MKV_OK=1
+  echo "    使用本地 mkvmerge: $MKV_PATH"
+elif have mkvmerge; then
+  MKV_PATH="$(command -v mkvmerge)"; MKV_OK=1
+  echo "    使用系统 mkvmerge: $MKV_PATH"
+elif have apt-get; then
+  echo "    apt-get 安装 mkvtoolnix（提供 mkvmerge，约 10-20MB）..."
+  if (apt-get update -qq && apt-get install -y -qq mkvtoolnix) >/dev/null 2>&1; then
+    MKV_PATH="$(command -v mkvmerge)"; MKV_OK=1
+    echo "    mkvmerge 就绪: $MKV_PATH"
+  else
+    echo "    mkvtoolnix 安装失败 —— 不影响使用（mkv 分段自动改用 ffmpeg 合并）"
+    echo "    如需 mkvmerge：确认软件源含 universe 仓库后重跑（Ubuntu: add-apt-repository universe）"
+  fi
+else
+  echo "    系统无 apt-get，跳过 mkvmerge（mkv 分段自动改用 ffmpeg 合并）"
+fi
+
+echo "==> [4/4] 写入配置 ..."
 "$NODE_BIN" -e '
 const fs = require("fs");
 const path = require("path");
 const cfgPath = path.join(process.cwd(), "config.json");
 const ff = process.argv[1];
+const mkv = process.argv[2];
+const mkvOk = process.argv[3] === "1";
 let cfg = {};
 try { cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8")); } catch {}
 if (!cfg.ffmpegselect && ff !== "ffmpeg") cfg.ffmpegselect = ff;
+if (mkvOk) {
+  cfg.mkvmergenable = true;
+  cfg.mkvmergepath = mkv;
+}
 if (cfg.savefolder === undefined) cfg.savefolder = "";
 fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2));
-console.log("    config.json ->", cfgPath, "ffmpegselect =", cfg.ffmpegselect || "PATH");
-' "$FF_PATH"
+console.log("    config.json ->", cfgPath);
+console.log("    ffmpegselect =", cfg.ffmpegselect || "PATH");
+console.log("    mkvmerge =", mkvOk ? (cfg.mkvmergepath + " (已启用)") : "未安装，mkv 分段用 ffmpeg 合并");
+' "$FF_PATH" "$MKV_PATH" "$MKV_OK"
 
 chmod +x start.sh 2>/dev/null || true
 

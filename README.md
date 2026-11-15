@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/kain1999/live-rec-hinas/main/instal
 curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/kain1999/live-rec-hinas/main/install.sh | sudo sh -s -- --dir /opt/live-rec-hinas --mirror ghproxy
 ```
 
-- 自动下载源码 → 安装 Node.js 20 + ffmpeg（自动识别 aarch64/armv7l/x64，国内镜像优先）→ 可加 `--service` 顺带注册 systemd 开机自启。
+- 自动下载源码 → 安装 Node.js 20 + ffmpeg + mkvmerge（mkvtoolnix，自动识别 aarch64/armv7l/x64，国内镜像优先）→ 可加 `--service` 顺带注册 systemd 开机自启。安装完成后 `config.json` 自动写好 `ffmpegselect` 与 `mkvmergenable/mkvmergepath`，无需手工配置。
 
 支持站点（与原版扩展一致，自动轮询 → 开播自动录制 → 私播暂停 → 下播停止并合并分段）：
 

@@ -95,10 +95,14 @@ else
   echo "    启动:   cd $DIR && ./start.sh"
 fi
 PORT=$(node -e 'try{console.log(JSON.parse(require("fs").readFileSync("config.json","utf8")).port||7788)}catch{console.log(7788)}' 2>/dev/null || echo 7788)
+FFS=$(node -e 'try{const c=JSON.parse(require("fs").readFileSync("config.json","utf8"));console.log(c.ffmpegselect||"PATH 中的 ffmpeg")}catch{console.log("PATH")}' 2>/dev/null || echo PATH)
+MKV=$(node -e 'try{const c=JSON.parse(require("fs").readFileSync("config.json","utf8"));console.log(c.mkvmergenable?("已启用 ("+c.mkvmergepath+")"):"未装，mkv 分段用 ffmpeg 合并")}catch{console.log("未知")}' 2>/dev/null || echo 未知)
 IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 echo ""
 echo "=================================================="
 echo " 安装完成！"
 echo " 盒子上访问:   http://127.0.0.1:$PORT"
 echo " 局域网访问:   http://${IP:-<盒子IP>}:$PORT"
+echo " ffmpeg:       $FFS"
+echo " mkvmerge:     $MKV"
 echo "=================================================="
