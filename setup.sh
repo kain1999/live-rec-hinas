@@ -78,7 +78,7 @@ else
     JV="ffmpeg-release-arm64-static.tar.xz"
     [ "$NODE_ARCH" = "armv7l" ] && JV="ffmpeg-release-armhf-static.tar.xz"
     [ "$NODE_ARCH" = "x64" ] && JV="ffmpeg-release-amd64-static.tar.xz"
-    for MIRROR in "https://www.johnvansickle.com/ffmpeg/releases/$JV"; do
+    for MIRROR in https://www.johnvansickle.com/ffmpeg/releases/$JV; do
       echo "    try: $MIRROR"
       (have curl && curl -fL --connect-timeout 10 -o "$RUNTIME/$JV" "$MIRROR") || \
       (have wget && wget -q -T 10 -O "$RUNTIME/$JV" "$MIRROR") || continue
