@@ -1,0 +1,83 @@
+name: Live Record Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      site:
+        description: 'site (chaturbate/stripchat/bongacams/cam4/camsoda/dreamcam)'
+        required: true
+        default: 'chaturbate'
+      room:
+        description: 'room / model name'
+        required: true
+        default: 'oke_doke'
+      seconds:
+        description: 'record seconds'
+        required: true
+        default: '60'
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg + mkvmerge
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg mkvtoolnix
+          ffmpeg -version | head -n 1
+          mkvmerge --version
+
+      - name: Resolve + record
+        id: rec
+        run: |
+          set +e
+          node test/record-cli.mjs --site "${{ inputs.site }}" --room "${{ inputs.room }}" --seconds "${{ inputs.seconds }}" --outdir recordings
+          code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Probe outputs
+        if: hashFiles('recordings/*') != ''
+        run: |
+          for f in recordings/*; do
+            echo "=== $f"
+            ls -la "$f"
+            ffprobe -v error -show_entries format=duration,size,format_name -of default=noprint_wrappers=1 "$f" || true
+          done
+
+      - name: Result gate
+        run: |
+          code="${{ steps.rec.outputs.exit }}"
+          echo "record-cli exit code: $code"
+          case "$code" in
+            0) echo "RECORD PASS" ;;
+            2) echo "SKIP: room not online at test time" ;;
+            *) echo "RECORD FAIL (exit=$code)"; exit 1 ;;
+          esac
+
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "### Live Record Test"
+            echo ""
+            echo "| item | value |"
+            echo "| --- | --- |"
+            echo "| site/room | ${{ inputs.site }} / ${{ inputs.room }} |"
+            echo "| duration | ${{ inputs.seconds }} s |"
+            echo "| cli exit | ${{ steps.rec.outputs.exit }} |"
+            echo ""
+            echo "exit code map: 0=PASS, 2=room not online, 3=no stream url, 4=no history, 5=bad output"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload recording
+        if: hashFiles('recordings/*') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: recording-${{ inputs.site }}-${{ inputs.room }}
+          path: recordings/
+          retention-days: 3
+          if-no-files-found: ignore
