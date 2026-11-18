@@ -1,13 +1,13 @@
 // live-rec-hinas 服务端：HTTP API + 静态 UI + 鉴权 + 调度启动
 import http from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
-import { createReadStream, existsSync, statSync } from 'node:fs'
+import { createReadStream, existsSync, statSync, unlinkSync, readdirSync, rmdirSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { loadConfig, updateConfig, ensureDirs, saveFolderPath } from './core/config.js'
 import { ROOT, VERSION } from './core/paths.js'
 import { log, getLogs, clearLogs, initLog } from './core/log.js'
-import { getTask, getTasks, addTask, removeTask, updateTask, getHistory } from './core/store.js'
+import { getTask, getTasks, addTask, removeTask, updateTask, getHistory, removeHistoryAt, scheduleSave } from './core/store.js'
 import { getSite, matchSite, roomFromUrl, siteListForUI } from './core/sites.js'
 import { startScheduler, stopScheduler, runNow, shutdown } from './core/scheduler.js'
 import {
@@ -314,6 +314,74 @@ async function handleApi(req, res, pathname) {
       break
     case '/api/history':
       return json(res, 200, { ok: true, history: getHistory().slice(-300).reverse() })
+    case '/api/history/delete': {
+      // index 为前端列表（倒序）中的位置
+      const { index, deleteFiles } = await readJson(req)
+      const all = getHistory()
+      const realIdx = all.length - 1 - Number(index)
+      const entry = realIdx >= 0 && realIdx < all.length ? removeHistoryAt(realIdx) : null
+      let removed = []
+      if (deleteFiles) {
+        const targets = [entry.file, ...(entry.parts || [])]
+        for (const f of targets) {
+          try {
+            const p = path.resolve(String(f))
+            if (p.startsWith(path.resolve(ROOT, 'recordings')) || p.startsWith(path.resolve(saveFolderPath()))) {
+              if (existsSync(p)) { unlinkSync(p); removed.push(path.basename(p)) }
+            }
+          } catch { /* skip */ }
+        }
+      }
+      scheduleSave()
+      log.info(`history deleted: index=${index} files=[${removed.join(', ')}]`)
+      return json(res, 200, { ok: true, removed })
+    }
+    case '/api/files': {
+      // 实时扫描磁盘上的录像文件（ recordings + savefolder）
+      const roots = [path.resolve(ROOT, 'recordings'), path.resolve(saveFolderPath())]
+      const files = []
+      const seen = new Set()
+      for (const root of roots) {
+        if (seen.has(root) || !existsSync(root)) continue
+        seen.add(root)
+        const walk = (dir) => {
+          let entries = []
+          try { entries = readdirSync(dir, { withFileTypes: true }) } catch { return }
+          for (const e of entries) {
+            const p = path.join(dir, e.name)
+            if (e.isDirectory()) { walk(p); continue }
+            let st = null
+            try { st = statSync(p) } catch { continue }
+            if (!st.isFile()) continue
+            files.push({
+              rel: path.relative(root, p).split(path.sep).join('/'),
+              root: root === roots[0] ? 'recordings' : 'save',
+              size: st.size,
+              mtime: st.mtimeMs
+            })
+          }
+        }
+        walk(root)
+      }
+      files.sort((a, b) => b.mtime - a.mtime)
+      return json(res, 200, { ok: true, files })
+    }
+    case '/api/files/delete': {
+      // 按相对路径删除磁盘文件，并清理空目录
+      const { rel, root } = await readJson(req)
+      const base = root === 'save' ? path.resolve(saveFolderPath()) : path.resolve(ROOT, 'recordings')
+      const p = path.resolve(base, String(rel || ''))
+      if (!p.startsWith(base + path.sep)) return json(res, 400, { ok: false, error: 'invalid path' })
+      if (!existsSync(p)) return json(res, 404, { ok: false, error: 'file not found' })
+      unlinkSync(p)
+      let dir = path.dirname(p)
+      while (dir.startsWith(base) && dir !== base) {
+        try { const es = readdirSync(dir); if (es.length) break; rmdirSync(dir) } catch { break }
+        dir = path.dirname(dir)
+      }
+      log.info(`file deleted: ${p}`)
+      return json(res, 200, { ok: true })
+    }
     case '/api/probe': {
       // 手动测试某个 URL 的可访问性（诊断用）
       const body = await readJson(req)

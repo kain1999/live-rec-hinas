@@ -22,19 +22,50 @@ export default class ChaturbateExtension {
     body.append('room_slug', nametag)
     body.append('bandwidth', 'high')
 
-    const res = await fetch('https://chaturbate.com/get_edge_hls_url_ajax/', {
-      method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-        'User-Agent': IPAD_UA,
-        'Referer': `https://chaturbate.com/${nametag}/`
-      },
-      body
-    })
+    // 走 impit 浏览器 TLS 指纹，绕过 Cloudflare 对原生 fetch 的质询
+    // UA 必须与 CBProxy 拉流时一致（edge 校验 token 绑定的 UA）
+    const DESKTOP_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:147.0) Gecko/20100101 Firefox/147.0'
+    const { fetchWithAgent } = await import('../core/fetcher.js')
+    let text = ''
+    try {
+      const res = await fetchWithAgent('https://chaturbate.com/get_edge_hls_url_ajax/', {
+        method: 'POST',
+        impit: true,
+        browser: 'firefox',
+        headers: {
+          'User-Agent': DESKTOP_UA,
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'Referer': `https://chaturbate.com/${nametag}/`
+        },
+        body: body.toString()
+      })
+      text = await res.text()
+    } catch (err) {
+      // impit 失败回退原生 fetch
+      const res = await fetch('https://chaturbate.com/get_edge_hls_url_ajax/', {
+        method: 'POST',
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'User-Agent': IPAD_UA,
+          'Referer': `https://chaturbate.com/${nametag}/`
+        },
+        body
+      })
+      text = await res.text()
+    }
+    let res
+    try {
+      res = JSON.parse(text)
+    } catch {
+      // 返回了 HTML（Cloudflare 质询页）——抛出可识别的错误，交由上层重试
+      throw new Error('cloudflare-challenge')
+    }
 
-    return await res.json()
+    return res
   }
 
   async getInfo(nametag) {

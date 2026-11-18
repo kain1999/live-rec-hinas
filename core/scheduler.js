@@ -96,12 +96,13 @@ export function rescheduleTask(taskId) {
 
 async function resolveRecUrl(inst, task) {
   try {
+    const quality = (loadConfig().quality || '').toString().trim()
     if (task.site === 'chaturbate' && inst.getStreamUrlForRec) {
-      const r = await inst.getStreamUrlForRec(task.room, '', null)
+      const r = await inst.getStreamUrlForRec(task.room, '', quality || null)
       return r?.url || null
     }
     if (task.site === 'stripchat' && inst.getStreamUrlForRec) {
-      const r = await inst.getStreamUrlForRec(task.room, null)
+      const r = await inst.getStreamUrlForRec(task.room, quality || null)
       return r?.url || null
     }
     if (task.site === 'camsoda') {
@@ -113,7 +114,19 @@ async function resolveRecUrl(inst, task) {
       return proxy.proxyUrl(res.url)
     }
     const res = await inst.extract(task.room)
-    return res.url || res.resolutions?.[0]?.url || null
+    let list = res.resolutions || []
+    if (quality && list.length) {
+      const qh = parseInt(quality)
+      const qfull = quality.includes('x') ? quality : null
+      const filtered = list.filter(x => {
+        const r = x.resolution || ''
+        if (qfull) return r === qfull
+        const m = r.match(/x(\d+)/)
+        return m && parseInt(m[1]) === qh
+      })
+      if (filtered.length) list = filtered
+    }
+    return res.url || list[0]?.url || null
   } catch (err) {
     log.warn(`resolveRecUrl failed (${task.site}/${task.room}): ${err.message}`)
     return null

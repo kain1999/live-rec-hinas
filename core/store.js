@@ -50,6 +50,11 @@ export function removeTask(id) {
   scheduleSave()
 }
 export function getHistory() { loadStore(); return state.history }
+export function removeHistoryAt(index) {
+  loadStore()
+  if (index < 0 || index >= state.history.length) return null
+  return state.history.splice(index, 1)[0]
+}
 export function addHistory(entry) {
   loadStore()
   state.history.push(entry)

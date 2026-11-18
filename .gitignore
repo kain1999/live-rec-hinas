@@ -4,3 +4,4 @@ recordings/
 data/
 config.json
 *.log
+server.out

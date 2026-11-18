@@ -314,8 +314,13 @@ export class Recording {
     if (t.includes('Stream #0:') && t.includes('Video:')) {
       const vm = t.match(/Video: ([^,]+),[^,]*, (\d{2,5})x(\d{2,5})/)
       if (vm) {
-        this.stats.codec = vm[1].split(' ')[0]
-        this.stats.resolution = `${vm[2]}x${vm[3]}`
+        const w = Number(vm[2]), h = Number(vm[3])
+        // 取所有流中分辨率最大的，避免被预览/附加流覆盖
+        const cur = (this.stats.resolution || '').match(/(\d+)x(\d+)/)
+        if (!cur || w * h > Number(cur[1]) * Number(cur[2])) {
+          this.stats.codec = vm[1].split(' ')[0]
+          this.stats.resolution = `${vm[2]}x${vm[3]}`
+        }
       }
     }
     if (t.startsWith('[') && (t.includes('Error') || t.includes('error') || t.includes('Failed') || t.includes('403') || t.includes('404'))) {

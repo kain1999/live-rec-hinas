@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG = {
   mkvmergenable: false,
   // 录制
   recformat: 'mkv',                  // mkv | ts | mp4 | flv
+  quality: '',                       // 录制清晰度：空=最高画质，或高度数字如 1080 / 720
   dateformat: 'model-site-dd-MM-yyyy_hh-mm-ss',
   autocreatefolder: true,            // savefolder/yyyy-MM-dd/{site} - {room}/
   ffmpegparams: '',                  // 附加 ffmpeg 输出参数（空格分隔）

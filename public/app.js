@@ -88,7 +88,7 @@
       `<span>任务 <b>${data.tasks.length}</b></span>`
     $('#save-folder').textContent = data.savefolder
     renderTasks()
-    if (activeTab === 'files') renderFiles()
+    if (activeTab === 'files') { renderFiles(); if (Date.now() - filesLoadedAt > 3000) loadFiles() }
   }
   function refreshAll() { refreshState() }
 
@@ -145,18 +145,28 @@
         <div class="task-actions">
           <button class="btn small" data-act="check" data-id="${esc(t.id)}">立即检测</button>
           ${rec.recording ? '<button class="btn small" data-act="stop" data-id="' + esc(t.id) + '">停止录制</button>' : ''}
-          <button class="btn small danger" data-act="delete" data-id="${esc(t.id)}">删除</button>
+          <button class="btn small danger" data-act="delete" data-id="${esc(t.id)}">${armedTaskId === t.id ? '确认删除？' : '删除'}</button>
         </div>
       </div>`
     }).join('')
   }
 
+  let armedTaskId = ''
+  setInterval(() => { armedTaskId = '' }, 8000)
   $('#tasks-list').addEventListener('click', async e => {
     const btn = e.target.closest('button[data-act]')
     if (!btn) return
     const id = btn.dataset.id
     const act = btn.dataset.act
-    if (act === 'delete' && !confirm('删除该任务？录像文件会保留在磁盘上。')) return
+    if (act === 'delete') {
+      // 两步确认（不用原生 confirm，部分环境会禁用），armed 状态跨自动刷新存活
+      if (armedTaskId !== id) {
+        armedTaskId = id
+        renderTasks()
+        return
+      }
+      armedTaskId = ''
+    }
     if (act === 'stop') {
       // 停止录制 = 停用（自动模式下防秒重启）
       const r = await api('/api/task/action', { method: 'POST', body: { id, action: 'disable' } })
@@ -209,30 +219,79 @@
   })
 
   // ---------- 文件 ----------
+  // 文件列表实时来自磁盘扫描（/api/files），不是历史记录
+  let filesCache = []
+  let filesLoadedAt = 0
   function renderFiles() {
     const el = $('#files-list')
-    const history = state?.history || []
-    const base = state?.savefolder || ''
-    if (!history.length) { el.innerHTML = '<div class="empty muted">还没有已完成的录像。开始录制后这里会列出文件（点击文件名可直接在浏览器播放/下载）。</div>'; return }
-    el.innerHTML = history.map(h => {
-      let rel = ''
-      if (base && h.file.startsWith(base)) rel = h.file.slice(base.length + 1).split(pathSep).join('/')
-      else rel = h.file.split(/[\\/]/).pop()
-      const name = h.file.split(/[\\/]/).pop()
-      const dur = h.startedAt && h.endedAt ? humanDur(h.endedAt - h.startedAt) : '-'
-      const reasonText = { ended: '正常结束', stopped: '手动停止', error: '异常终止', offline: '主播下播', private: '私播结束', disk: '磁盘空间不足', 'disk-full': '磁盘空间不足', removed: '任务删除', manual: '手动停止', shutdown: '程序退出' }[h.reason] || h.reason || ''
-      return `
+    // 录制中的文件（尚未结束，磁盘上持续增长）
+    const active = (state?.tasks || []).filter(t => (t.recording || {}).recording || (t.recording || {}).paused)
+    let html = ''
+    if (active.length) {
+      html += '<div class="muted" style="margin:4px 0 8px;font-weight:600">● 录制中</div>'
+      html += active.map(t => {
+        const rec = t.recording || {}
+        const file = rec.outputPath || ''
+        let rel = ''
+        if (file) {
+          const base = state?.savefolder || ''
+          if (base && file.startsWith(base)) rel = file.slice(base.length + 1).split(pathSep).join('/')
+          else rel = file.split(/[\\/]/).pop()
+        }
+        return `<div class="file-row">
+        <div class="file-name">
+          <span>🔴 ${esc(t.room)} (${esc(t.site)})</span>
+          <div class="file-info">已录 ${humanDur(rec.timeRec || 0)} · ${humanSize(rec.fileSize || 0)} · ${esc(file.split(/[\\/]/).pop() || '等待起流')} ${rec.paused ? ' · 已暂停(私播)' : ''}</div>
+        </div>
+        ${rel ? `<a class="btn small" href="/files/${encodeURI(rel)}" download>下载当前</a>` : ''}
+      </div>`
+      }).join('')
+    }
+    if (!filesCache.length && !active.length) {
+      if (Date.now() - filesLoadedAt > 3000) { loadFiles() }
+      el.innerHTML = '<div class="empty muted">磁盘上没有录像文件。开始录制后文件会实时出现在这里。</div>'
+      return
+    }
+    html += (filesCache.length ? '<div class="muted" style="margin:12px 0 8px;font-weight:600">📁 磁盘文件（实时）</div>' : '')
+    html += filesCache.map((f, i) => `
       <div class="file-row">
         <div class="file-name">
-          <a href="/files/${encodeURI(rel)}" target="_blank" rel="noopener">${esc(name)}</a>
-          <div class="file-info">${esc(h.site)}/${esc(h.room)} · ${humanSize(h.size)} · ${dur} · ${timeStr(h.endedAt)}${reasonText ? ' · ' + esc(reasonText) : ''}${h.parts ? ' · ' + h.parts.length + ' 分段已合并' : ''}</div>
+          <a href="/files/${encodeURI(f.rel)}" target="_blank" rel="noopener">${esc(f.rel.split('/').pop())}</a>
+          <div class="file-info">${esc(f.rel.split('/').slice(0, -1).join('/') || '.')} · ${humanSize(f.size)} · ${timeStr(f.mtime)}</div>
         </div>
-        <a class="btn small" href="/files/${encodeURI(rel)}" download>下载</a>
-      </div>`
-    }).join('')
+        <span style="display:flex;gap:6px">
+          <a class="btn small" href="/files/${encodeURI(f.rel)}" download>下载</a>
+          <button class="btn small danger${armedFile === i ? ' armed' : ''}" data-fact="del" data-idx="${i}">${armedFile === i ? '确认删除文件？' : '删除文件'}</button>
+        </span>
+      </div>`).join('')
+    el.innerHTML = html
   }
+  async function loadFiles() {
+    filesLoadedAt = Date.now()
+    try {
+      const r = await api('/api/files')
+      if (r.ok) { filesCache = r.files || []; renderFiles() }
+    } catch { /* 下次轮询重试 */ }
+  }
+  // 删除确认状态（跨自动刷新存活）
+  let armedFile = -1
+  function disarmHist() { armedFile = -1 }
+  setInterval(disarmHist, 8000)
+  // 事件委托：DOM 重建后监听依然有效
+  $('#files-list').addEventListener('click', async e => {
+    const btn = e.target.closest('button[data-fact]')
+    if (!btn) return
+    const idx = Number(btn.dataset.idx)
+    if (armedFile !== idx) { armedFile = idx; renderFiles(); return }
+    armedFile = -1
+    const f = filesCache[idx]
+    if (!f) return
+    const r = await api('/api/files/delete', { method: 'POST', body: { rel: f.rel, root: f.root } })
+    if (r.ok) { toast('已删除文件'); await loadFiles() }
+    else toast('删除失败: ' + (r.error || '未知错误'))
+  })
   const pathSep = navigator.platform.startsWith('Win') ? '\\' : '/'
-  $('#btn-refresh-files').addEventListener('click', refreshState)
+  $('#btn-refresh-files').addEventListener('click', () => { filesLoadedAt = 0; loadFiles() })
 
   // ---------- 设置 ----------
   const SETTINGS_GROUPS = [
@@ -252,6 +311,7 @@
     {
       title: '录制', fields: [
         { key: 'recformat', label: '录像格式', type: 'select', options: ['mkv', 'ts', 'mp4', 'flv'], hint: '推荐 mkv（断电不怕文件损坏）或 ts' },
+        { key: 'quality', label: '录制清晰度（高度，空=最高）', type: 'number', hint: '如填 720 只录 720p 及匹配清晰度；留空录制最高画质。对 chaturbate/stripchat 无效的清晰度会自动回退到最高。' },
         { key: 'dateformat', label: '文件名格式', type: 'text', hint: 'model=房间名 site=站点名，支持 yyyy MM dd hh mm ss' },
         { key: 'autocreatefolder', label: '按日期/房间建子目录', type: 'checkbox' },
         { key: 'ffmpegparams', label: '附加 ffmpeg 参数', type: 'text', hint: '输出参数，空格分隔，留空即可' },
@@ -352,7 +412,7 @@
       document.querySelectorAll('.tabpage').forEach(p => p.classList.add('hidden'))
       $('#tab-' + activeTab).classList.remove('hidden')
       if (activeTab === 'settings' && !configCache) loadSettings()
-      if (activeTab === 'files') renderFiles()
+      if (activeTab === 'files') { renderFiles(); if (Date.now() - filesLoadedAt > 3000) loadFiles() }
       if (activeTab === 'logs') { logLast = 0; logLines = []; pollLogs() }
     })
   })
