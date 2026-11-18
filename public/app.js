@@ -230,9 +230,8 @@
     const active = (state?.tasks || []).filter(t => (t.recording || {}).recording || (t.recording || {}).paused)
     let html = ''
     // 实时容量显示
-    if (filesMeta.totalSize !== null) {
-      const pct = filesMeta.diskFree ? (filesMeta.totalSize / (filesMeta.totalSize + filesMeta.diskFree) * 100) : 0
-      html += `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 已用 <b>${humanSize(filesMeta.totalSize)}</b>${filesMeta.diskFree ? ` · 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b>（录像占 ${pct.toFixed(1)}%）` : ''}</div>`
+    if (filesMeta.diskFree !== null) {
+      html += `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b></div>`
     }
     if (active.length) {
       html += '<div class="muted" style="margin:4px 0 8px;font-weight:600">● 录制中</div>'
@@ -256,10 +255,10 @@
     }
     if (!filesCache.length && !active.length) {
       if (Date.now() - filesLoadedAt > 3000) { loadFiles() }
-      el.innerHTML = '<div class="empty muted">磁盘上没有录像文件。开始录制后文件会实时出现在这里。</div>'
+      el.innerHTML = '<div class="empty muted">磁盘上没有录像文件。开始录制后文件会出现在这里。</div>'
       return
     }
-    html += (filesCache.length ? '<div class="muted" style="margin:12px 0 8px;font-weight:600">📁 磁盘文件（实时）</div>' : '')
+    html += (filesCache.length ? '<div class="muted" style="margin:12px 0 8px;font-weight:600">📁 磁盘文件</div>' : '')
     html += filesCache.map((f, i) => `
       <div class="file-row">
         <div class="file-name">
