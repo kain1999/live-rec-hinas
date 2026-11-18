@@ -364,8 +364,14 @@ async function handleApi(req, res, pathname) {
         walk(root)
       }
       files.sort((a, b) => b.mtime - a.mtime)
+      // 剩余容量按实际存储目录（savefolder）所在磁盘判断；失败再退回 recordings
       let diskFree = null
-      try { diskFree = statfsSync(path.resolve(ROOT, 'recordings')).bavail * statfsSync(path.resolve(ROOT, 'recordings')).bsize } catch { /* ignore */ }
+      for (const d of [path.resolve(saveFolderPath()), path.resolve(ROOT, 'recordings')]) {
+        try {
+          const st = statfsSync(d)
+          if (st.bavail !== undefined) { diskFree = st.bavail * st.bsize; break }
+        } catch { /* try next */ }
+      }
       return json(res, 200, { ok: true, files, totalSize: files.reduce((s, f) => s + f.size, 0), diskFree })
     }
     case '/api/files/delete': {
