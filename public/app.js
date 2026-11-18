@@ -254,8 +254,9 @@
       }).join('')
     }
     if (!filesCache.length && !active.length) {
-      if (Date.now() - filesLoadedAt > 3000) { loadFiles() }
-      el.innerHTML = '<div class="empty muted">磁盘上没有录像文件。开始录制后文件会出现在这里。</div>'
+      const cap = filesMeta.diskFree !== null ? `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b></div>` : ''
+      if (Date.now() - filesLoadedAt > 3000) loadFiles()
+      el.innerHTML = cap + '<div class="empty muted">磁盘上没有录像文件。开始录制后文件会出现在这里。</div>'
       return
     }
     html += (filesCache.length ? '<div class="muted" style="margin:12px 0 8px;font-weight:600">📁 磁盘文件</div>' : '')
