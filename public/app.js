@@ -221,12 +221,19 @@
   // ---------- 文件 ----------
   // 文件列表实时来自磁盘扫描（/api/files），不是历史记录
   let filesCache = []
+  let filesMeta = { totalSize: null, diskFree: null }
   let filesLoadedAt = 0
   function renderFiles() {
     const el = $('#files-list')
+    // 容量显示数据由 loadFiles 更新
     // 录制中的文件（尚未结束，磁盘上持续增长）
     const active = (state?.tasks || []).filter(t => (t.recording || {}).recording || (t.recording || {}).paused)
     let html = ''
+    // 实时容量显示
+    if (filesMeta.totalSize !== null) {
+      const pct = filesMeta.diskFree ? (filesMeta.totalSize / (filesMeta.totalSize + filesMeta.diskFree) * 100) : 0
+      html += `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 已用 <b>${humanSize(filesMeta.totalSize)}</b>${filesMeta.diskFree ? ` · 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b>（录像占 ${pct.toFixed(1)}%）` : ''}</div>`
+    }
     if (active.length) {
       html += '<div class="muted" style="margin:4px 0 8px;font-weight:600">● 录制中</div>'
       html += active.map(t => {
@@ -270,7 +277,11 @@
     filesLoadedAt = Date.now()
     try {
       const r = await api('/api/files')
-      if (r.ok) { filesCache = r.files || []; renderFiles() }
+      if (r.ok) {
+        filesCache = r.files || []
+        filesMeta = { totalSize: r.totalSize ?? null, diskFree: r.diskFree ?? null }
+        renderFiles()
+      }
     } catch { /* 下次轮询重试 */ }
   }
   // 删除确认状态（跨自动刷新存活）

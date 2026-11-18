@@ -1,7 +1,7 @@
 // live-rec-hinas 服务端：HTTP API + 静态 UI + 鉴权 + 调度启动
 import http from 'node:http'
 import { createHash, randomBytes } from 'node:crypto'
-import { createReadStream, existsSync, statSync, unlinkSync, readdirSync, rmdirSync } from 'node:fs'
+import { createReadStream, existsSync, statSync, unlinkSync, readdirSync, rmdirSync, statfsSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { loadConfig, updateConfig, ensureDirs, saveFolderPath } from './core/config.js'
@@ -364,7 +364,9 @@ async function handleApi(req, res, pathname) {
         walk(root)
       }
       files.sort((a, b) => b.mtime - a.mtime)
-      return json(res, 200, { ok: true, files })
+      let diskFree = null
+      try { diskFree = statfsSync(path.resolve(ROOT, 'recordings')).bavail * statfsSync(path.resolve(ROOT, 'recordings')).bsize } catch { /* ignore */ }
+      return json(res, 200, { ok: true, files, totalSize: files.reduce((s, f) => s + f.size, 0), diskFree })
     }
     case '/api/files/delete': {
       // 按相对路径删除磁盘文件，并清理空目录
