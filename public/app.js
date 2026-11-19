@@ -619,7 +619,7 @@
 
   // ---------- 启动 ----------
   refreshState().catch(() => {})
-  setInterval(refreshState, 3000)
+  setInterval(refreshState, 1000)
   setInterval(pollLogs, 2000)
 
   // 支持 #tasks/#files/#settings/#logs 直达
