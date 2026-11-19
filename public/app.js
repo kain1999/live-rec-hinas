@@ -223,6 +223,14 @@
   let filesCache = []
   let filesMeta = { totalSize: null, diskFree: null, upload: null }
   let filesLoadedAt = 0
+  let showUploadHistory = false
+  let uploadHistory = []
+  async function loadUploadHistory() {
+    try {
+      const r = await api('/api/baidu/history')
+      if (r.ok) { uploadHistory = r.history || []; renderFiles() }
+    } catch { /* ignore */ }
+  }
   function renderFiles() {
     const el = $('#files-list')
     // 容量显示数据由 loadFiles 更新
@@ -253,25 +261,29 @@
       </div>`
       }).join('')
     }
-    // 百度网盘上传进度
+    // 百度网盘上传进度（只显示进行中的进度与速度；完成/失败见「上传记录」）
     const up = filesMeta.upload
-    if (up && (up.active || up.ok === false || (up.ok && up.finishedAt))) {
+    if (up && up.active) {
       const pctRaw = up.total ? Math.min(100, (up.uploaded / up.total * 100)) : 0
       const pct = (up.active && pctRaw >= 99.9) ? '99' : pctRaw.toFixed(1)  // 本地传完待网盘确认显示99%
-      if (up.active) {
-        const suffix = pctRaw >= 99.9 ? ' · 待网盘确认' : ''
-        html += `<div class="file-row" style="background:var(--card)">
+      const suffix = pctRaw >= 99.9 ? ' · 待网盘确认' : ''
+      html += `<div class="file-row" style="background:var(--card)">
+      <div class="file-name">
+        <span>⬆ 百度网盘上传中：${esc(up.file)}</span>
+        <div class="file-info">${pct}%${suffix} · ${humanSize(up.uploaded)} / ${humanSize(up.total)} · ${humanSize(up.speed)}/s</div>
+      </div>
+      <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelup">取消上传</button></span>
+    </div>`
+    }
+    if (showUploadHistory && uploadHistory.length) {
+      html += '<div class="muted" style="margin:12px 0 8px;font-weight:600">🗒 上传记录</div>'
+      html += uploadHistory.map(h => `
+      <div class="file-row">
         <div class="file-name">
-          <span>⬆ 百度网盘上传中：${esc(up.file)}</span>
-          <div class="file-info">${pct}%${suffix} · ${humanSize(up.uploaded)} / ${humanSize(up.total)} · ${humanSize(up.speed)}/s</div>
+          <span>${h.ok ? '✅' : '❌'} ${esc(h.file)}</span>
+          <div class="file-info">${humanSize(h.total)} · ${timeStr(h.finishedAt)}${h.ok ? ' · 已到网盘' : ' · ' + esc(h.error || '失败')}</div>
         </div>
-        <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelup">取消上传</button></span>
-      </div>`
-      } else if (up.ok === false && up.error !== '已取消') {
-        html += `<div class="file-row"><div class="file-name"><span>⬆ 上传失败：${esc(up.file)}</span><div class="file-info">${esc(up.error || '未知错误')}</div></div></div>`
-      } else if (up.ok && up.finishedAt && Date.now() - up.finishedAt < 60000) {
-        html += `<div class="file-row"><div class="file-name"><span>⬆ 上传完成：${esc(up.file)}</span><div class="file-info">${humanSize(up.total)} · 已到网盘「我的应用数据/bypy/${esc(up.remote)}」</div></div></div>`
-      }
+      </div>`).join('')
     }
     if (!filesCache.length && !active.length) {
       const cap = filesMeta.diskFree !== null ? `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b></div>` : ''
@@ -343,6 +355,11 @@
   })
   const pathSep = navigator.platform.startsWith('Win') ? '\\' : '/'
   $('#btn-refresh-files').addEventListener('click', () => { filesLoadedAt = 0; loadFiles() })
+  $('#btn-upload-history').addEventListener('click', () => {
+    showUploadHistory = !showUploadHistory
+    if (showUploadHistory) loadUploadHistory()
+    else renderFiles()
+  })
 
   // ---------- 设置 ----------
   const SETTINGS_GROUPS = [

@@ -434,6 +434,10 @@ async function handleApi(req, res, pathname) {
       const { getUploadStatus } = await import('./lib/baidu-netdisk.js')
       return json(res, 200, { ok: true, upload: getUploadStatus() })
     }
+    case '/api/baidu/history': {
+      const { getUploadHistory } = await import('./lib/baidu-netdisk.js')
+      return json(res, 200, { ok: true, history: getUploadHistory() })
+    }
     case '/api/baidu/test': {
       const { testBypyConnection, submitBypyAuthCode } = await import('./lib/baidu-netdisk.js')
       const { authCode } = await readJson(req).catch(() => ({}))
