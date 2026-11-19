@@ -432,7 +432,8 @@
       else value = el.value
       if (key.includes('.')) {
         const [group, sub] = key.split('.')
-        patch[group] = { ...(configCache[group] || {}), [sub]: value }
+        // 同组的多个 dot-key 依次累积，避免后者用旧 configCache 覆盖前者
+        patch[group] = { ...(patch[group] ?? configCache[group] ?? {}), [sub]: value }
       } else patch[key] = value
     })
     const r = await api('/api/config', { method: 'POST', body: patch })
