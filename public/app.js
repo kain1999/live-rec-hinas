@@ -221,7 +221,7 @@
   // ---------- 文件 ----------
   // 文件列表实时来自磁盘扫描（/api/files），不是历史记录
   let filesCache = []
-  let filesMeta = { totalSize: null, diskFree: null }
+  let filesMeta = { totalSize: null, diskFree: null, upload: null }
   let filesLoadedAt = 0
   function renderFiles() {
     const el = $('#files-list')
@@ -253,6 +253,27 @@
       </div>`
       }).join('')
     }
+    // 百度网盘上传进度
+    const up = filesMeta.upload
+    if (up && (up.active || up.ok === false || (up.ok && up.finishedAt))) {
+      const pctRaw = up.total ? Math.min(100, (up.uploaded / up.total * 100)) : 0
+      const pct = (up.active && pctRaw >= 99.9) ? '99' : pctRaw.toFixed(1)  // 本地传完待网盘确认显示99%
+      if (up.active) {
+        const suffix = pctRaw >= 99.9 ? ' · 待网盘确认' : ''
+        html += `<div class="file-row" style="background:var(--card)">
+        <div class="file-name">
+          <span>⬆ 百度网盘上传中：${esc(up.file)}</span>
+          <div class="file-info">${pct}%${suffix} · ${humanSize(up.uploaded)} / ${humanSize(up.total)} · ${humanSize(up.speed)}/s</div>
+        </div>
+        <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelup">取消上传</button></span>
+      </div>`
+      } else if (up.ok === false) {
+        const cancelled = up.error === '已取消'
+        html += `<div class="file-row"><div class="file-name"><span>⬆ ${cancelled ? '上传已取消' : '上传失败'}：${esc(up.file)}</span><div class="file-info">${cancelled ? '可点击文件行「上传」重新上传' : esc(up.error || '未知错误')}</div></div></div>`
+      } else if (up.ok && up.finishedAt && Date.now() - up.finishedAt < 60000) {
+        html += `<div class="file-row"><div class="file-name"><span>⬆ 上传完成：${esc(up.file)}</span><div class="file-info">${humanSize(up.total)} · 已到网盘「我的应用数据/bypy/${esc(up.remote)}」</div></div></div>`
+      }
+    }
     if (!filesCache.length && !active.length) {
       const cap = filesMeta.diskFree !== null ? `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b></div>` : ''
       if (Date.now() - filesLoadedAt > 3000) loadFiles()
@@ -268,6 +289,7 @@
         </div>
         <span style="display:flex;gap:6px">
           <a class="btn small" href="/files/${encodeURI(f.rel)}" download>下载</a>
+          <button class="btn small" data-fact="upload" data-idx="${i}">上传</button>
           <button class="btn small danger${armedFile === i ? ' armed' : ''}" data-fact="del" data-idx="${i}">${armedFile === i ? '确认删除文件？' : '删除文件'}</button>
         </span>
       </div>`).join('')
@@ -279,10 +301,14 @@
       const r = await api('/api/files')
       if (r.ok) {
         filesCache = r.files || []
-        filesMeta = { totalSize: r.totalSize ?? null, diskFree: r.diskFree ?? null }
+        filesMeta = { totalSize: r.totalSize ?? null, diskFree: r.diskFree ?? null, upload: filesMeta.upload }
         renderFiles()
       }
     } catch { /* 下次轮询重试 */ }
+    try {
+      const p = await api('/api/baidu/progress')
+      if (p.ok) { filesMeta.upload = p.upload; renderFiles() }
+    } catch { /* ignore */ }
   }
   // 删除确认状态（跨自动刷新存活）
   let armedFile = -1
@@ -292,6 +318,21 @@
   $('#files-list').addEventListener('click', async e => {
     const btn = e.target.closest('button[data-fact]')
     if (!btn) return
+    const fact = btn.dataset.fact
+    if (fact === 'cancelup') {
+      const r = await api('/api/baidu/cancel', { method: 'POST', body: {} })
+      toast(r.ok ? (r.cancelled ? '已取消上传' : '当前没有进行中的上传') : '取消失败')
+      await loadFiles()
+      return
+    }
+    if (fact === 'upload') {
+      const f = filesCache[Number(btn.dataset.idx)]
+      if (!f) return
+      const r = await api('/api/baidu/upload', { method: 'POST', body: { rel: f.rel, root: f.root } })
+      if (r.ok) { toast('已加入上传队列'); filesLoadedAt = 0; await loadFiles() }
+      else toast('上传失败: ' + (r.error || '未知错误'))
+      return
+    }
     const idx = Number(btn.dataset.idx)
     if (armedFile !== idx) { armedFile = idx; renderFiles(); return }
     armedFile = -1

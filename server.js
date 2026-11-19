@@ -273,19 +273,20 @@ function serveFile(res, filePath, inline = false, req = null) {
     }
     headers['Content-Range'] = `bytes ${start}-${end}/${size}`
     headers['Content-Length'] = end - start + 1
-    if (req.method === 'HEAD') { res.writeHead(206, headers); res.end(); return }
+    if (req && req.method === 'HEAD') { res.writeHead(206, headers); res.end(); return }
     res.writeHead(206, headers)
     createReadStream(filePath, { start, end }).pipe(res)
     return
   }
   headers['Content-Length'] = size
-  if (req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return }
+  if (req && req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return }
   res.writeHead(200, headers)
   createReadStream(filePath).pipe(res)
 }
 
 function serveSavedFile(req, res, pathname) {
   // /files/<相对路径> -> savefolder 下文件（供局域网直接下载录像）
+  log.info(`[DL] ${req.method} range=${req.headers.range || '-'} ua=${(req.headers['user-agent'] || '').slice(0, 40)} url=${pathname.slice(0, 80)}`)
   const rel = decodeURIComponent(pathname.replace(/^\/files\/?/, ''))
   if (!rel) { res.writeHead(404); res.end(); return }
   const base = path.resolve(saveFolderPath())
@@ -413,6 +414,25 @@ async function handleApi(req, res, pathname) {
       }
       log.info(`file deleted: ${p}`)
       return json(res, 200, { ok: true })
+    }
+    case '/api/baidu/upload': {
+      // 手动上传指定文件（相对 recordings 或 savefolder），用于测试和补传
+      const { uploadToBaidu } = await import('./lib/baidu-netdisk.js')
+      const { rel, root } = await readJson(req)
+      const base = root === 'save' ? path.resolve(saveFolderPath()) : path.resolve(ROOT, 'recordings')
+      const p = path.resolve(base, String(rel || ''))
+      if (!p.startsWith(base + path.sep) || !existsSync(p)) return json(res, 400, { ok: false, error: 'invalid path' })
+      uploadToBaidu(p).catch(err => log.error(`[百度网盘] 手动上传失败: ${err.message}`))
+      return json(res, 200, { ok: true, queued: true })
+    }
+    case '/api/baidu/cancel': {
+      const { cancelUpload, getUploadStatus } = await import('./lib/baidu-netdisk.js')
+      const had = cancelUpload()
+      return json(res, 200, { ok: true, cancelled: had, upload: getUploadStatus() })
+    }
+    case '/api/baidu/progress': {
+      const { getUploadStatus } = await import('./lib/baidu-netdisk.js')
+      return json(res, 200, { ok: true, upload: getUploadStatus() })
     }
     case '/api/baidu/test': {
       const { testBypyConnection, submitBypyAuthCode } = await import('./lib/baidu-netdisk.js')
