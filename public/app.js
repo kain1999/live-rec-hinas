@@ -267,9 +267,8 @@
         </div>
         <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelup">取消上传</button></span>
       </div>`
-      } else if (up.ok === false) {
-        const cancelled = up.error === '已取消'
-        html += `<div class="file-row"><div class="file-name"><span>⬆ ${cancelled ? '上传已取消' : '上传失败'}：${esc(up.file)}</span><div class="file-info">${cancelled ? '可点击文件行「上传」重新上传' : esc(up.error || '未知错误')}</div></div></div>`
+      } else if (up.ok === false && up.error !== '已取消') {
+        html += `<div class="file-row"><div class="file-name"><span>⬆ 上传失败：${esc(up.file)}</span><div class="file-info">${esc(up.error || '未知错误')}</div></div></div>`
       } else if (up.ok && up.finishedAt && Date.now() - up.finishedAt < 60000) {
         html += `<div class="file-row"><div class="file-name"><span>⬆ 上传完成：${esc(up.file)}</span><div class="file-info">${humanSize(up.total)} · 已到网盘「我的应用数据/bypy/${esc(up.remote)}」</div></div></div>`
       }
