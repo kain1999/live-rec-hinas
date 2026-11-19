@@ -34,7 +34,7 @@ export const DEFAULT_CONFIG = {
   loglevel: 'info',
   historymax: 500,
   // 百度网盘自动上传（基于 bypy）
-  baidu: { enabled: false, bypypath: '', remoteDir: 'live-rec' }
+  baidu: { enabled: false, bypypath: '', remoteDir: 'live-rec', deleteAfterUpload: false }
 }
 
 let cached = null

@@ -408,7 +408,8 @@
     {
       title: '百度网盘自动上传', fields: [
         { key: 'baidu.enabled', label: '录制完成后自动上传', type: 'checkbox', hint: '基于 bypy，文件上传到网盘「我的应用数据/bypy/live-rec」。首次使用需点下方「测试连接」完成授权。' },
-        { key: 'baidu.bypypath', label: 'bypy 路径（可选）', hint: '留空使用 PATH 中的 bypy；自装时填完整路径如 /usr/local/bin/bypy' }
+        { key: 'baidu.bypypath', label: 'bypy 路径（可选）', hint: '留空使用 PATH 中的 bypy；自装时填完整路径如 /usr/local/bin/bypy' },
+        { key: 'baidu.deleteAfterUpload', label: '传后即焚（上传成功后删除本地文件）', type: 'checkbox', hint: '自动上传到百度网盘且网盘确认文件存在后，自动删除本地录像文件。仅在 baidu.enabled 开启时生效。' }
       ]
     }
   ]
