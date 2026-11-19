@@ -438,14 +438,25 @@
       </div>`
     ).join('')
     ensureBaiduTestUI()
+    syncBaiduDeleteState()
   }
+
+  // 传后即焚依赖自动上传开关：未勾选时禁用
+  function syncBaiduDeleteState() {
+    const en = $('#settings-form input[data-key="baidu.enabled"]')
+    const del = $('#settings-form input[data-key="baidu.deleteAfterUpload"]')
+    if (en && del) del.disabled = !en.checked
+  }
+  $('#settings-form').addEventListener('change', e => {
+    if (e.target.dataset?.key === 'baidu.enabled') syncBaiduDeleteState()
+  })
 
     $('#btn-save-config').addEventListener('click', async () => {
     const patch = {}
     $('#settings-form').querySelectorAll('[data-key]').forEach(el => {
       const key = el.dataset.key
       let value
-      if (el.type === 'checkbox') value = el.checked
+      if (el.type === 'checkbox') value = el.disabled ? false : el.checked
       else if (el.type === 'number') value = Number(el.value) || 0
       else value = el.value
       if (key.includes('.')) {
