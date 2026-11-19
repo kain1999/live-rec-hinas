@@ -412,7 +412,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (pathname.startsWith('/api/')) return await handleApi(req, res, pathname)
     if (pathname.startsWith('/files/')) {
-      if (!authed(req)) { res.writeHead(401); res.end(); return }
+      // 下载不限权限（供迅雷等外部下载工具直接拉取），管理 API 仍有鉴权
       return serveSavedFile(req, res, pathname)
     }
     if (pathname === '/' || pathname === '/index.html') return serveFile(res, path.join(PUBLIC_DIR, 'index.html'))
