@@ -273,11 +273,13 @@ function serveFile(res, filePath, inline = false, req = null) {
     }
     headers['Content-Range'] = `bytes ${start}-${end}/${size}`
     headers['Content-Length'] = end - start + 1
+    if (req.method === 'HEAD') { res.writeHead(206, headers); res.end(); return }
     res.writeHead(206, headers)
     createReadStream(filePath, { start, end }).pipe(res)
     return
   }
   headers['Content-Length'] = size
+  if (req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return }
   res.writeHead(200, headers)
   createReadStream(filePath).pipe(res)
 }
