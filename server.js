@@ -243,19 +243,41 @@ const MIME = {
 const PUBLIC_DIR = path.join(ROOT, 'public')
 const DOWNLOAD_MIME = new Set(['.mkv', '.ts', '.mp4', '.flv'])
 
-function serveFile(res, filePath, inline = false) {
+function serveFile(res, filePath, inline = false, req = null) {
   if (!existsSync(filePath) || !statSync(filePath).isFile()) {
     res.writeHead(404); res.end('Not Found'); return
   }
   const ext = path.extname(filePath).toLowerCase()
+  const size = statSync(filePath).size
   const headers = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Content-Length': statSync(filePath).size,
-    'Cache-Control': 'no-store'
+    'Cache-Control': 'no-store',
+    'Accept-Ranges': 'bytes'  // 支持断点续传
   }
   if (DOWNLOAD_MIME.has(ext) && !inline) {
     headers['Content-Disposition'] = `attachment; filename="${encodeURIComponent(path.basename(filePath))}"`
   }
+  // Range 请求（迅雷/浏览器断点续传、拖动播放）
+  const range = req ? (req.headers.range || '') : ''
+  const m = range.match(/^bytes=(\d*)-(\d*)$/)
+  if (m && (m[1] !== '' || m[2] !== '')) {
+    let start, end
+    if (m[1] === '') { // bytes=-N 后缀 N 字节
+      const n = Number(m[2])
+      start = Math.max(0, size - n); end = size - 1
+    } else {
+      start = Number(m[1]); end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)
+    }
+    if (isNaN(start) || start > end || start >= size) {
+      res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return
+    }
+    headers['Content-Range'] = `bytes ${start}-${end}/${size}`
+    headers['Content-Length'] = end - start + 1
+    res.writeHead(206, headers)
+    createReadStream(filePath, { start, end }).pipe(res)
+    return
+  }
+  headers['Content-Length'] = size
   res.writeHead(200, headers)
   createReadStream(filePath).pipe(res)
 }
@@ -267,7 +289,7 @@ function serveSavedFile(req, res, pathname) {
   const base = path.resolve(saveFolderPath())
   const full = path.resolve(base, rel)
   if (!full.startsWith(base)) { res.writeHead(403); res.end(); return }
-  serveFile(res, full, true)
+  serveFile(res, full, true, req)
 }
 
 // ---------- 路由 ----------
