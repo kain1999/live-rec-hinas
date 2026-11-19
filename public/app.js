@@ -340,7 +340,7 @@
       const r = await api('/api/files')
       if (r.ok) {
         filesCache = r.files || []
-        filesMeta = { totalSize: r.totalSize ?? null, diskFree: r.diskFree ?? null, upload: filesMeta.upload }
+        filesMeta = { totalSize: r.totalSize ?? null, diskFree: r.diskFree ?? null, upload: filesMeta.upload, fh: filesMeta.fh }
         renderFiles()
       }
     } catch { /* 下次轮询重试 */ }
