@@ -260,28 +260,36 @@ function serveFile(res, filePath, inline = false, req = null) {
   // Range 请求（迅雷/浏览器断点续传、拖动播放）
   const range = req ? (req.headers.range || '') : ''
   const m = range.match(/^bytes=(\d*)-(\d*)$/)
-  if (m && (m[1] !== '' || m[2] !== '')) {
-    let start, end
-    if (m[1] === '') { // bytes=-N 后缀 N 字节
-      const n = Number(m[2])
-      start = Math.max(0, size - n); end = size - 1
-    } else {
-      start = Number(m[1]); end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)
-    }
-    if (isNaN(start) || start > end || start >= size) {
-      res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return
-    }
-    headers['Content-Range'] = `bytes ${start}-${end}/${size}`
-    headers['Content-Length'] = end - start + 1
-    if (req && req.method === 'HEAD') { res.writeHead(206, headers); res.end(); return }
-    res.writeHead(206, headers)
-    createReadStream(filePath, { start, end }).pipe(res)
-    return
+  const streamOpts = m && (m[1] !== '' || m[2] !== '')
+    ? (() => {
+        let start, end
+        if (m[1] === '') { // bytes=-N 后缀 N 字节
+          const n = Number(m[2])
+          start = Math.max(0, size - n); end = size - 1
+        } else {
+          start = Number(m[1]); end = m[2] === '' ? size - 1 : Math.min(Number(m[2]), size - 1)
+        }
+        if (isNaN(start) || start > end || start >= size) {
+          res.writeHead(416, { 'Content-Range': `bytes */${size}` }); res.end(); return null
+        }
+        headers['Content-Range'] = `bytes ${start}-${end}/${size}`
+        headers['Content-Length'] = end - start + 1
+        if (req && req.method === 'HEAD') { res.writeHead(206, headers); res.end(); return null }
+        res.writeHead(206, headers)
+        return { start, end }
+      })()
+    : null
+  if (streamOpts === null && m && (m[1] !== '' || m[2] !== '')) return // 已在上方处理并返回
+  if (!streamOpts) {
+    headers['Content-Length'] = size
+    if (req && req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return }
+    res.writeHead(200, headers)
   }
-  headers['Content-Length'] = size
-  if (req && req.method === 'HEAD') { res.writeHead(200, headers); res.end(); return }
-  res.writeHead(200, headers)
-  createReadStream(filePath).pipe(res)
+  // 关键：客户端中断时销毁读流，否则 fd 泄漏导致已删除文件空间无法释放
+  const stream = streamOpts ? createReadStream(filePath, streamOpts) : createReadStream(filePath)
+  stream.on('error', () => { try { res.destroy() } catch { /* ignore */ } })
+  res.on('close', () => { if (!res.writableEnded) { try { stream.destroy() } catch { /* ignore */ } } })
+  stream.pipe(res)
 }
 
 function serveSavedFile(req, res, pathname) {
