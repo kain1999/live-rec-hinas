@@ -32,7 +32,9 @@ export const DEFAULT_CONFIG = {
   maxproxytry: 3,
   // 其它
   loglevel: 'info',
-  historymax: 500
+  historymax: 500,
+  // 百度网盘自动上传（基于 bypy）
+  baidu: { enabled: false, bypypath: '' }
 }
 
 let cached = null

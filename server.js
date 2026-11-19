@@ -390,6 +390,16 @@ async function handleApi(req, res, pathname) {
       log.info(`file deleted: ${p}`)
       return json(res, 200, { ok: true })
     }
+    case '/api/baidu/test': {
+      const { testBypyConnection, submitBypyAuthCode } = await import('./lib/baidu-netdisk.js')
+      const { authCode } = await readJson(req).catch(() => ({}))
+      try {
+        const r = authCode ? await submitBypyAuthCode(String(authCode)) : await testBypyConnection()
+        return json(res, 200, { ok: true, needAuth: !!r.needAuth, authUrl: r.authUrl || null, raw: r.raw || '' })
+      } catch (err) {
+        return json(res, 200, { ok: false, raw: err.message })
+      }
+    }
     case '/api/probe': {
       // 手动测试某个 URL 的可访问性（诊断用）
       const body = await readJson(req)

@@ -347,6 +347,12 @@
         { key: 'proxylist', label: '代理列表文件路径', type: 'text', hint: '可选，每行一个 http 代理（需 npm 安装 undici 才生效）' },
         { key: 'maxproxytry', label: '代理最大尝试次数', type: 'number' }
       ]
+    },
+    {
+      title: '百度网盘自动上传', fields: [
+        { key: 'baidu.enabled', label: '录制完成后自动上传', type: 'checkbox', hint: '基于 bypy，文件上传到网盘「我的应用数据/bypy/live-rec」。首次使用需点下方「测试连接」完成授权。' },
+        { key: 'baidu.bypypath', label: 'bypy 路径（可选）', hint: '留空使用 PATH 中的 bypy；自装时填完整路径如 /usr/local/bin/bypy' }
+      ]
     }
   ]
 
@@ -359,7 +365,7 @@
         <h3>${esc(g.title)}</h3>
         <div class="settings-grid">
           ${g.fields.map(f => {
-            const val = configCache[f.key]
+            const val = f.key.includes('.') ? (configCache[f.key.split('.')[0]] || {})[f.key.split('.')[1]] : configCache[f.key]
             let input
             if (f.type === 'select') {
               input = `<select data-key="${f.key}">${f.options.map(o => `<option value="${o}" ${String(val) === o ? 'selected' : ''}>${o}</option>`).join('')}</select>`
@@ -373,15 +379,21 @@
         </div>
       </div>`
     ).join('')
+    ensureBaiduTestUI()
   }
 
-  $('#btn-save-config').addEventListener('click', async () => {
+    $('#btn-save-config').addEventListener('click', async () => {
     const patch = {}
     $('#settings-form').querySelectorAll('[data-key]').forEach(el => {
       const key = el.dataset.key
-      if (el.type === 'checkbox') patch[key] = el.checked
-      else if (el.type === 'number') patch[key] = Number(el.value) || 0
-      else patch[key] = el.value
+      let value
+      if (el.type === 'checkbox') value = el.checked
+      else if (el.type === 'number') value = Number(el.value) || 0
+      else value = el.value
+      if (key.includes('.')) {
+        const [group, sub] = key.split('.')
+        patch[group] = { ...(configCache[group] || {}), [sub]: value }
+      } else patch[key] = value
     })
     const r = await api('/api/config', { method: 'POST', body: patch })
     if (r.ok) {
@@ -390,6 +402,38 @@
       $('#config-note').textContent = r.restartNeeded ? '端口已修改，需重启服务（systemctl restart live-rec 或重新运行 start.sh）' : ''
     } else toast('保存失败', true)
   })
+
+  // 百度网盘授权/测试连接
+  $('#settings-form').addEventListener('click', async e => {
+    if (!e.target.closest('#btn-baidu-test')) return
+    const btn = e.target.closest('#btn-baidu-test')
+    const out = $('#baidu-test-result')
+    btn.disabled = true; btn.textContent = '检测中...'
+    const authCode = ($('#baidu-auth-code') || {}).value || ''
+    const r = await api('/api/baidu/test', { method: 'POST', body: { authCode } })
+    btn.disabled = false; btn.textContent = '测试连接 / 提交授权码'
+    if (r.ok && r.needAuth) {
+      out.innerHTML = `未授权。请用浏览器打开下面的链接登录百度网盘并复制授权码，填到上方输入框后再点一次：<br><a href="${esc(r.authUrl || '')}" target="_blank" rel="noopener">${esc(r.authUrl || '见日志')}</a>`
+    } else if (r.ok && !r.needAuth) {
+      out.innerHTML = `<span style="color:var(--accent)">✅ 百度网盘连接正常</span>`
+    } else {
+      out.innerHTML = `❌ 连接失败：<br><pre style="white-space:pre-wrap;font-size:11px">${esc(r.raw || '未知错误')}</pre>`
+    }
+  })
+  function ensureBaiduTestUI() {
+    if ($('#btn-baidu-test')) return
+    const form = $('#settings-form')
+    form.insertAdjacentHTML('beforeend', `
+      <div class="settings-group">
+        <h3>百度网盘授权</h3>
+        <div class="field"><label>百度授权码（首次绑定时填写）</label>
+          <input type="text" id="baidu-auth-code" placeholder="授权后百度页面显示的授权码">
+          <div class="hint">流程：点「测试连接」→ 浏览器打开授权链接登录 → 复制授权码填入此处 → 再点「测试连接」</div>
+        </div>
+        <div class="field"><button class="btn" id="btn-baidu-test" type="button">测试连接 / 提交授权码</button></div>
+        <div id="baidu-test-result" class="hint"></div>
+      </div>`)
+  }
 
   // ---------- 日志 ----------
   async function pollLogs() {

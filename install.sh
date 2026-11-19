@@ -83,6 +83,27 @@ cd "$DIR"
 echo "==> [3/4] 安装运行环境（Node.js + ffmpeg，首次较慢）..."
 sh "$DIR/setup.sh"
 
+echo "==> [3.5/4] 环境自检（架构: $(uname -m)）..."
+HOST_ARCH=$(uname -m)
+case "$HOST_ARCH" in
+  aarch64|arm64) SUPPORTED="yes (arm64，impit 提供 linux-arm64 预编译包)" ;;
+  x86_64|amd64)  SUPPORTED="yes (x64，impit 提供 linux-x64 预编译包)" ;;
+  armv7l|armv6l) SUPPORTED="部分 (armv7，impit 无预编译包，会自动回退原生 fetch，功能不受影响)" ;;
+  *) SUPPORTED="未知架构 $HOST_ARCH，Node/ffmpeg 已按 setup.sh 检测结果安装" ;;
+esac
+# 可选：百度网盘自动上传依赖（bypy，纯 Python，全架构通用）
+if have python3 && (have pip3 || python3 -m pip --version >/dev/null 2>&1); then
+  if python3 -c "import bypy" >/dev/null 2>&1 || (pip3 install --break-system-packages bypy >/dev/null 2>&1 || python3 -m pip install bypy >/dev/null 2>&1); then
+    BAIDU_ENV="bypy 已安装 ✅（设置页开启并授权后可用）"
+  else
+    BAIDU_ENV="bypy 安装失败，可稍后手动: pip3 install bypy"
+  fi
+else
+  BAIDU_ENV="未检测到 python3/pip3，如需百度网盘自动上传请先安装: apt install python3-pip && pip3 install bypy"
+fi
+echo "    架构支持: $SUPPORTED"
+echo "    百度网盘: $BAIDU_ENV"
+
 echo "==> [4/4] 完成"
 if [ "$SERVICE" = "1" ] && have systemctl; then
   sed -i "s#/opt/live-rec-hinas#$DIR#g" "$DIR/live-rec.service"
@@ -105,4 +126,6 @@ echo " 盒子上访问:   http://127.0.0.1:$PORT"
 echo " 局域网访问:   http://${IP:-<盒子IP>}:$PORT"
 echo " ffmpeg:       $FFS"
 echo " mkvmerge:     $MKV"
+echo " 架构:         $HOST_ARCH ($SUPPORTED)"
+echo " 百度网盘上传: $BAIDU_ENV"
 echo "=================================================="
