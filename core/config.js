@@ -34,7 +34,10 @@ export const DEFAULT_CONFIG = {
   loglevel: 'info',
   historymax: 500,
   // 百度网盘自动上传（基于 bypy）
-  baidu: { enabled: false, bypypath: '', remoteDir: 'live-rec', deleteAfterUpload: false }
+  baidu: { enabled: false, bypypath: '', remoteDir: 'live-rec', deleteAfterUpload: false },
+  // 文件床上传：Pixeldrain / Gofile（与百度自动上传互斥）
+  pd: { enabled: false, deleteAfterUpload: false, apiKey: '', proxy: '' },
+  gf: { enabled: false, deleteAfterUpload: false, apiToken: '', proxy: '' }
 }
 
 let cached = null

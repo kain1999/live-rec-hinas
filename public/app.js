@@ -226,10 +226,18 @@
   let showUploadHistory = false
   let uploadHistory = []
   async function loadUploadHistory() {
+    const merged = []
     try {
       const r = await api('/api/baidu/history')
-      if (r.ok) { uploadHistory = r.history || []; renderFiles() }
+      if (r.ok) merged.push(...(r.history || []).map(h => ({ ...h, target: 'baidu' })))
     } catch { /* ignore */ }
+    try {
+      const r = await api('/api/fh/history')
+      if (r.ok) merged.push(...(r.history || []))
+    } catch { /* ignore */ }
+    merged.sort((a, b) => (b.finishedAt || 0) - (a.finishedAt || 0))
+    uploadHistory = merged
+    renderFiles()
   }
   function renderFiles() {
     const el = $('#files-list')
@@ -275,15 +283,35 @@
       <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelup">取消上传</button></span>
     </div>`
     }
+    // 文件床（Pixeldrain / Gofile）上传进度
+    for (const [p, label] of [['pd', 'Pixeldrain'], ['gf', 'Gofile']]) {
+      const s = filesMeta.fh?.[p]
+      if (s && s.active) {
+        const pctRaw = s.total ? Math.min(100, (s.uploaded / s.total * 100)) : 0
+        const pct = pctRaw >= 99.9 ? '99' : pctRaw.toFixed(1)
+        const suffix = pctRaw >= 99.9 ? ' · 待接口确认' : ''
+        html += `<div class="file-row" style="background:var(--card)">
+      <div class="file-name">
+        <span>⬆ ${label} 上传中：${esc(s.file)}</span>
+        <div class="file-info">${pct}%${suffix} · ${humanSize(s.uploaded)} / ${humanSize(s.total)} · ${humanSize(s.speed)}/s</div>
+      </div>
+      <span style="display:flex;gap:6px"><button class="btn small danger" data-fact="cancelfh" data-p="${p}">取消上传</button></span>
+    </div>`
+      }
+    }
     if (showUploadHistory && uploadHistory.length) {
       html += '<div class="muted" style="margin:12px 0 8px;font-weight:600">🗒 上传记录</div>'
-      html += uploadHistory.map(h => `
+      html += uploadHistory.map(h => {
+        const label = h.target === 'pd' ? 'Pixeldrain' : h.target === 'gf' ? 'Gofile' : '百度网盘'
+        const link = h.url ? ` · <a href="${esc(h.url)}" target="_blank" rel="noopener">链接</a>` : ''
+        return `
       <div class="file-row">
         <div class="file-name">
-          <span>${h.ok ? '✅' : '❌'} ${esc(h.file)}</span>
-          <div class="file-info">${humanSize(h.total)} · ${timeStr(h.finishedAt)}${h.ok ? ' · 已到网盘' : ' · ' + esc(h.error || '失败')}</div>
+          <span>${h.ok ? '✅' : '❌'} [${label}] ${esc(h.file)}</span>
+          <div class="file-info">${humanSize(h.total)} · ${timeStr(h.finishedAt)}${h.ok ? ' · 已确认' + link : ' · ' + esc(h.error || '失败')}</div>
         </div>
-      </div>`).join('')
+      </div>`
+      }).join('')
     }
     if (!filesCache.length && !active.length) {
       const cap = filesMeta.diskFree !== null ? `<div class="muted" style="margin:4px 0 8px;font-weight:600">💾 磁盘剩余 <b>${humanSize(filesMeta.diskFree)}</b></div>` : ''
@@ -320,6 +348,10 @@
       const p = await api('/api/baidu/progress')
       if (p.ok) { filesMeta.upload = p.upload; renderFiles() }
     } catch { /* ignore */ }
+    try {
+      const r = await api('/api/fh/progress')
+      if (r.ok) { filesMeta.fh = { pd: r.pd, gf: r.gf }; renderFiles() }
+    } catch { /* ignore */ }
   }
   // 删除确认状态（跨自动刷新存活）
   let armedFile = -1
@@ -336,10 +368,27 @@
       await loadFiles()
       return
     }
+    if (fact === 'cancelfh') {
+      const provider = btn.dataset.p
+      const r = await api('/api/fh/cancel', { method: 'POST', body: { provider } })
+      toast(r.ok ? (r.cancelled ? '已取消上传' : '当前没有进行中的上传') : '取消失败')
+      await loadFiles()
+      return
+    }
     if (fact === 'upload') {
       const f = filesCache[Number(btn.dataset.idx)]
       if (!f) return
-      const r = await api('/api/baidu/upload', { method: 'POST', body: { rel: f.rel, root: f.root } })
+      // 手动上传目标：优先已启用的自动上传目标（gf > pd > baidu），否则百度
+      let provider = 'baidu'
+      try {
+        if (!configCache) configCache = (await api('/api/config')).config
+        if (configCache.gf?.enabled) provider = 'gf'
+        else if (configCache.pd?.enabled) provider = 'pd'
+        else if (configCache.baidu?.enabled) provider = 'baidu'
+      } catch { /* 默认百度 */ }
+      const path = provider === 'baidu' ? '/api/baidu/upload' : '/api/fh/upload'
+      const body = provider === 'baidu' ? { rel: f.rel, root: f.root } : { provider, rel: f.rel, root: f.root }
+      const r = await api(path, { method: 'POST', body })
       if (r.ok) { toast('已加入上传队列'); filesLoadedAt = 0; await loadFiles() }
       else toast('上传失败: ' + (r.error || '未知错误'))
       return
@@ -406,6 +455,22 @@
       ]
     },
     {
+      title: 'Pixeldrain 上传', fields: [
+        { key: 'pd.enabled', label: '录制完成后自动上传 Pixeldrain', type: 'checkbox', hint: '匿名可传；填 API Key 可管理自己账号里的文件。与其他自动上传目标互斥，只能启用一个。' },
+        { key: 'pd.deleteAfterUpload', label: '传后即焚（上传成功后删除本地文件）', type: 'checkbox', hint: '接口确认上传成功后自动删除本地文件。仅在 pd.enabled 开启时生效。' },
+        { key: 'pd.apiKey', label: 'Pixeldrain API Key（建议填写）', hint: 'pixeldrain.com → User → API keys。官方要求上传需 API Key（Basic 认证 ":key"），匿名不稳定' },
+        { key: 'pd.proxy', label: 'Pixeldrain 代理地址（可选）', hint: '如 http://127.0.0.1:10809 或 socks5://127.0.0.1:10808，留空直连。直连被重置时填代理' }
+      ]
+    },
+    {
+      title: 'Gofile 上传', fields: [
+        { key: 'gf.enabled', label: '录制完成后自动上传 Gofile', type: 'checkbox', hint: '匿名可传；填 API Token 可归档到自己账号。与其他自动上传目标互斥，只能启用一个。' },
+        { key: 'gf.deleteAfterUpload', label: '传后即焚（上传成功后删除本地文件）', type: 'checkbox', hint: '接口确认上传成功后自动删除本地文件。仅在 gf.enabled 开启时生效。' },
+        { key: 'gf.apiToken', label: 'Gofile API Token（可选）', hint: 'gofile.io → 登录 → Profile → API Token（Authorization: Bearer）' },
+        { key: 'gf.proxy', label: 'Gofile 代理地址（可选）', hint: '如 http://127.0.0.1:10809，留空直连' }
+      ]
+    },
+    {
       title: '百度网盘自动上传', fields: [
         { key: 'baidu.enabled', label: '录制完成后自动上传', type: 'checkbox', hint: '基于 bypy，文件上传到网盘「我的应用数据/bypy/live-rec」。首次使用需点下方「测试连接」完成授权。' },
         { key: 'baidu.bypypath', label: 'bypy 路径（可选）', hint: '留空使用 PATH 中的 bypy；自装时填完整路径如 /usr/local/bin/bypy' },
@@ -438,17 +503,27 @@
       </div>`
     ).join('')
     ensureBaiduTestUI()
-    syncBaiduDeleteState()
+    syncUploadExclusive()
   }
 
-  // 传后即焚依赖自动上传开关：未勾选时禁用
-  function syncBaiduDeleteState() {
-    const en = $('#settings-form input[data-key="baidu.enabled"]')
-    const del = $('#settings-form input[data-key="baidu.deleteAfterUpload"]')
-    if (en && del) del.disabled = !en.checked
+  // 上传目标互斥：百度 / Pixeldrain / Gofile 只能启用一个；传后即焚依赖各自开关
+  function syncUploadExclusive() {
+    const f = $('#settings-form')
+    const boxes = ['baidu.enabled', 'pd.enabled', 'gf.enabled']
+      .map(k => f.querySelector(`input[data-key="${k}"]`)).filter(Boolean)
+    const checked = boxes.filter(b => b.checked)
+    if (checked.length > 1) {
+      const keep = checked[checked.length - 1]  // 保留最后勾选的，其余取消
+      boxes.forEach(b => { if (b !== keep) b.checked = false })
+    }
+    for (const [enKey, delKey] of [['baidu.enabled', 'baidu.deleteAfterUpload'], ['pd.enabled', 'pd.deleteAfterUpload'], ['gf.enabled', 'gf.deleteAfterUpload']]) {
+      const en = f.querySelector(`input[data-key="${enKey}"]`)
+      const del = f.querySelector(`input[data-key="${delKey}"]`)
+      if (en && del) del.disabled = !en.checked
+    }
   }
   $('#settings-form').addEventListener('change', e => {
-    if (e.target.dataset?.key === 'baidu.enabled') syncBaiduDeleteState()
+    if (['baidu.enabled', 'pd.enabled', 'gf.enabled'].includes(e.target.dataset?.key)) syncUploadExclusive()
   })
 
     $('#btn-save-config').addEventListener('click', async () => {

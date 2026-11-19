@@ -446,6 +446,31 @@ async function handleApi(req, res, pathname) {
       const { getUploadHistory } = await import('./lib/baidu-netdisk.js')
       return json(res, 200, { ok: true, history: getUploadHistory() })
     }
+    case '/api/fh/progress': {
+      const { getFhStatus } = await import('./lib/filehost-upload.js')
+      return json(res, 200, { ok: true, pd: getFhStatus('pd'), gf: getFhStatus('gf') })
+    }
+    case '/api/fh/history': {
+      const { getFhHistory } = await import('./lib/filehost-upload.js')
+      return json(res, 200, { ok: true, history: getFhHistory() })
+    }
+    case '/api/fh/cancel': {
+      const { cancelFhUpload, getFhStatus } = await import('./lib/filehost-upload.js')
+      const { provider } = await readJson(req)
+      if (provider !== 'pd' && provider !== 'gf') return json(res, 400, { ok: false, error: 'invalid provider' })
+      const had = cancelFhUpload(provider)
+      return json(res, 200, { ok: true, cancelled: had, upload: getFhStatus(provider) })
+    }
+    case '/api/fh/upload': {
+      const { uploadToFilehost } = await import('./lib/filehost-upload.js')
+      const { provider, rel, root } = await readJson(req)
+      if (provider !== 'pd' && provider !== 'gf') return json(res, 400, { ok: false, error: 'invalid provider' })
+      const base = root === 'save' ? path.resolve(saveFolderPath()) : path.resolve(ROOT, 'recordings')
+      const p = path.resolve(base, String(rel || ''))
+      if (!p.startsWith(base + path.sep) || !existsSync(p)) return json(res, 400, { ok: false, error: 'invalid path' })
+      uploadToFilehost(provider, p).catch(err => log.error(`手动上传到 ${provider} 失败: ${err.message}`))
+      return json(res, 200, { ok: true, queued: true })
+    }
     case '/api/baidu/test': {
       const { testBypyConnection, submitBypyAuthCode } = await import('./lib/baidu-netdisk.js')
       const { authCode } = await readJson(req).catch(() => ({}))

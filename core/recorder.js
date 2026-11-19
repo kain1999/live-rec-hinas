@@ -7,6 +7,7 @@ import { loadConfig, saveFolderPath, ffmpegPath } from './config.js'
 import { log } from './log.js'
 import { addHistory } from './store.js'
 import { maybeUploadToBaidu } from '../lib/baidu-netdisk.js'
+import { maybeUploadToFilehost } from '../lib/filehost-upload.js'
 import { dateFormat } from './dateutil.js'
 
 const RECOVERABLE_ERRORS = [
@@ -462,6 +463,7 @@ export class Recording {
       log.info(`history saved: ${path.basename(file)} (${(size / 1048576).toFixed(1)}MB, ${reason})`)
       notify('finalized', this.task.id)
       maybeUploadToBaidu(file)  // 录制完成自动上传百度网盘（开启时）
+      maybeUploadToFilehost(file)  // 录制完成自动上传 Pixeldrain / Gofile（开启时，与百度互斥）
     }
 
     const cfg = loadConfig()
