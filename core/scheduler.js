@@ -178,6 +178,14 @@ async function loopTask(task) {
       } else {
         scheduleTask(task, Math.max(10000, cfg.pollinterval))
       }
+    } else if (rec.pendingEnd) {
+      // 流已断开待确认：继续检测，由 rec.check 裁决离线/私播/恢复
+      const st = await inst.update(task.room)
+      task.lastStatus = st.status
+      task.lastCheck = Date.now()
+      task.lastError = ''
+      rec.check(st.status)
+      scheduleTask(task, Math.max(10000, cfg.pollinterval))
     } else {
       const st = await inst.update(task.room)
       task.lastStatus = st.status

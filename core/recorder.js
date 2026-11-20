@@ -80,6 +80,7 @@ export class Recording {
     this.paused = false
     this.pausedAt = null
     this.pausedAccumulator = 0
+    this.pendingEnd = false // 流断开后待确认：等状态检测裁决离线/私播/恢复
     this.startTime = null
     this.retryCount = 0
     this.retryMax = 6
@@ -287,6 +288,12 @@ export class Recording {
           this.reconnectTimer = null
           if (!this.stopping && !this.paused && this.keepAlive) this.start(this.lastUrl, { resume: true })
         }, delay)
+      } else if (this.keepAlive && !this.paused) {
+        // 流意外断开（私播/网络波动）：不立即 finalize 上传，保留已录片段，
+        // 等状态检测确认真正离线（check 里的 pendingEnd 分支）再合并上传
+        this.pendingEnd = true
+        log.info(`stream ended (${this.task.room}), holding parts (${this.files.length}), waiting for offline confirmation`)
+        notify('update', this.task.id)
       } else {
         if (this.keepAlive) {
           log.warn(`recording finished (${this.task.room}), code=${code}${this.lastErrLine ? ' last=' + this.lastErrLine : ''}`)
@@ -365,6 +372,31 @@ export class Recording {
 
   check(status) {
     const cfg = loadConfig()
+    if (this.pendingEnd) {
+      // 流已断开但未确认结束：等状态检测裁决
+      if (status === 'offline' || status === 'not exist') {
+        log.info(`model ${this.task.room} confirmed offline (pendingEnd), finalizing & uploading`)
+        this.pendingEnd = false
+        this.keepAlive = false
+        this.#finalize('offline')
+        return
+      }
+      if (status === 'private') {
+        log.info(`model ${this.task.room} in private show (pendingEnd), waiting as paused`)
+        this.pendingEnd = false
+        this.paused = true
+        this.pausedAt = Date.now()
+        notify('update', this.task.id)
+        return
+      }
+      if (status === 'online') {
+        log.info(`model ${this.task.room} back online (pendingEnd), resuming recording`)
+        this.pendingEnd = false
+        this.start(this.lastUrl, { resume: true })
+        return
+      }
+      return // 未知状态：继续等下一轮检测
+    }
     if (status === 'offline' || status === 'not exist') {
       if (this.paused) {
         log.info(`model ${this.task.room} confirmed offline (was paused)`)
@@ -407,6 +439,7 @@ export class Recording {
 
   stop(reason = 'manual') {
     this.keepAlive = false
+    this.pendingEnd = false
     if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
     this.stopping = true
     this.paused = false
@@ -445,6 +478,7 @@ export class Recording {
     this.startTime = null
     this.pausedAccumulator = 0
     this.pausedAt = null
+    this.pendingEnd = false
     this.retryCount = 0
 
     const pushHistory = (file, size, parts) => {
